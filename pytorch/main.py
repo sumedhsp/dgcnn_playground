@@ -22,7 +22,6 @@ import numpy as np
 from torch.utils.data import DataLoader
 from util import cal_loss, IOStream
 import sklearn.metrics as metrics
-import tqdm
 
 
 def _init_():
@@ -142,24 +141,29 @@ def train(args, io):
     class_correct = defaultdict(int)
     class_total = defaultdict(int)
 
+    model.eval()
+        
     total_correct = 0
     total_testset = 0
-    for i,data in tqdm(enumerate(test_loader, 0)):
-        points, target = data
-        target = target[:, 0]
-        points = points.transpose(2, 1)
-        points, target = points.cuda(), target.cuda()
-        classifier = classifier.eval()
-        pred, _, _ = classifier(points)
+    for data, label in test_loader:
+        data, label = data.to(device), label.to(device).squeeze()
+        #points, target = data, label
+        
+        if label.dim() > 1:  # If label is 2D, extract column 0
+            label = label[:, 0]
+        
+        data = data.transpose(2, 1)
+        data, label = data.cuda(), label.cuda()
+        pred, _, _ = model(data)
         pred_choice = pred.data.max(1)[1]
-        correct = pred_choice.eq(target.data).cpu().sum()
+        correct = pred_choice.eq(label).cpu().sum()
         total_correct += correct.item()
-        total_testset += points.size()[0]
+        total_testset += data.size()[0]
 
-        for t, p in zip(target, pred_choice):
+        for t, p in zip(label.cpu().numpy(), pred_choice.cpu().numpy()):
             if t == p:
-                class_correct[t.item()] += 1
-            class_total[t.item()] += 1
+                class_correct[t] += 1
+            class_total[t] += 1
 
     print("Overall Accuracy {}".format(total_correct / float(total_testset)))
 
