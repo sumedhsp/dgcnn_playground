@@ -40,7 +40,7 @@ def _init_():
 def train(args, io):
     train_loader = DataLoader(ModelNetDataset(root=args.dataset_path, split='trainval', npoints=args.num_points), num_workers=4,
                               batch_size=args.batch_size, shuffle=True, drop_last=True)
-    test_loader = DataLoader(ModelNetDataset(root=args.dataset_path, split='test', npoints=args.num_points), num_workers=4,
+    test_loader = DataLoader(ModelNetDataset(root=args.dataset_path, split='test', npoints=args.num_points, data_augmentation=False), num_workers=4,
                              batch_size=args.test_batch_size, shuffle=True, drop_last=False)
 
     device = torch.device("cuda" if args.cuda else "cpu")
