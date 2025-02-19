@@ -37,7 +37,7 @@ def _init_():
     os.system('cp data.py checkpoints' + '/' + args.exp_name + '/' + 'data.py.backup')
 
 def train(args, io):
-    train_loader = DataLoader(ModelNetDataset(root=args.dataset_path, npoints=args.num_points), num_workers=8,
+    train_loader = DataLoader(ModelNetDataset(root=args.dataset_path, split='trainval', npoints=args.num_points), num_workers=8,
                               batch_size=args.batch_size, shuffle=True, drop_last=True)
     test_loader = DataLoader(ModelNetDataset(root=args.dataset_path, split='test', npoints=args.num_points), num_workers=8,
                              batch_size=args.test_batch_size, shuffle=True, drop_last=False)
