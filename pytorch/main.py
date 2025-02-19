@@ -22,6 +22,7 @@ import numpy as np
 from torch.utils.data import DataLoader
 from util import cal_loss, IOStream
 import sklearn.metrics as metrics
+import tqdm
 
 
 def _init_():
@@ -37,9 +38,9 @@ def _init_():
     os.system('cp data.py checkpoints' + '/' + args.exp_name + '/' + 'data.py.backup')
 
 def train(args, io):
-    train_loader = DataLoader(ModelNetDataset(root=args.dataset_path, split='trainval', npoints=args.num_points), num_workers=8,
+    train_loader = DataLoader(ModelNetDataset(root=args.dataset_path, split='trainval', npoints=args.num_points), num_workers=4,
                               batch_size=args.batch_size, shuffle=True, drop_last=True)
-    test_loader = DataLoader(ModelNetDataset(root=args.dataset_path, split='test', npoints=args.num_points), num_workers=8,
+    test_loader = DataLoader(ModelNetDataset(root=args.dataset_path, split='test', npoints=args.num_points), num_workers=4,
                              batch_size=args.test_batch_size, shuffle=True, drop_last=False)
 
     device = torch.device("cuda" if args.cuda else "cpu")
@@ -102,37 +103,72 @@ def train(args, io):
                                                                                      train_true, train_pred))
         io.cprint(outstr)
 
-        ####################
-        # Test
-        ####################
-        test_loss = 0.0
-        count = 0.0
-        model.eval()
-        test_pred = []
-        test_true = []
-        for data, label in test_loader:
-            data, label = data.to(device), label.to(device).squeeze()
-            data = data.permute(0, 2, 1)
-            batch_size = data.size()[0]
-            logits = model(data)
-            loss = criterion(logits, label)
-            preds = logits.max(dim=1)[1]
-            count += batch_size
-            test_loss += loss.item() * batch_size
-            test_true.append(label.cpu().numpy())
-            test_pred.append(preds.detach().cpu().numpy())
-        test_true = np.concatenate(test_true)
-        test_pred = np.concatenate(test_pred)
-        test_acc = metrics.accuracy_score(test_true, test_pred)
-        avg_per_class_acc = metrics.balanced_accuracy_score(test_true, test_pred)
-        outstr = 'Test %d, loss: %.6f, test acc: %.6f, test avg acc: %.6f' % (epoch,
-                                                                              test_loss*1.0/count,
-                                                                              test_acc,
-                                                                              avg_per_class_acc)
-        io.cprint(outstr)
-        if test_acc >= best_test_acc:
-            best_test_acc = test_acc
-            torch.save(model.state_dict(), 'checkpoints/%s/models/model.t7' % args.exp_name)
+        if (epoch % 5 == 0):
+            ####################
+            # Test
+            ####################
+            test_loss = 0.0
+            count = 0.0
+            model.eval()
+            test_pred = []
+            test_true = []
+            for data, label in test_loader:
+                data, label = data.to(device), label.to(device).squeeze()
+                data = data.permute(0, 2, 1)
+                batch_size = data.size()[0]
+                logits = model(data)
+                loss = criterion(logits, label)
+                preds = logits.max(dim=1)[1]
+                count += batch_size
+                test_loss += loss.item() * batch_size
+                test_true.append(label.cpu().numpy())
+                test_pred.append(preds.detach().cpu().numpy())
+            test_true = np.concatenate(test_true)
+            test_pred = np.concatenate(test_pred)
+            test_acc = metrics.accuracy_score(test_true, test_pred)
+            avg_per_class_acc = metrics.balanced_accuracy_score(test_true, test_pred)
+            outstr = 'Test %d, loss: %.6f, test acc: %.6f, test avg acc: %.6f' % (epoch,
+                                                                                test_loss*1.0/count,
+                                                                                test_acc,
+                                                                                avg_per_class_acc)
+            io.cprint(outstr)
+            if test_acc >= best_test_acc:
+                best_test_acc = test_acc
+                torch.save(model.state_dict(), 'checkpoints/%s/models/model.t7' % args.exp_name)
+    
+    # Printing each class accuracy after training.
+    from collections import defaultdict
+
+    class_correct = defaultdict(int)
+    class_total = defaultdict(int)
+
+    total_correct = 0
+    total_testset = 0
+    for i,data in tqdm(enumerate(test_loader, 0)):
+        points, target = data
+        target = target[:, 0]
+        points = points.transpose(2, 1)
+        points, target = points.cuda(), target.cuda()
+        classifier = classifier.eval()
+        pred, _, _ = classifier(points)
+        pred_choice = pred.data.max(1)[1]
+        correct = pred_choice.eq(target.data).cpu().sum()
+        total_correct += correct.item()
+        total_testset += points.size()[0]
+
+        for t, p in zip(target, pred_choice):
+            if t == p:
+                class_correct[t.item()] += 1
+            class_total[t.item()] += 1
+
+    print("Overall Accuracy {}".format(total_correct / float(total_testset)))
+
+
+    # Displaying per-class accuracy
+    for cls in class_total.keys():
+        class_accuracy = class_correct[cls] / class_total[cls]
+        print(f"Class {cls} Accuracy: {class_accuracy: .2f}")
+
 
 
 def test(args, io):
