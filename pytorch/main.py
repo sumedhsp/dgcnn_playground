@@ -137,6 +137,7 @@ def train(args, io):
     
     # Printing each class accuracy after training.
     from collections import defaultdict
+    from sklearn.metrics import precision_score, recall_score, f1_score
     
     # Initialize per-class accuracy tracking
     class_correct = defaultdict(int)
@@ -207,6 +208,18 @@ def train(args, io):
     for class_idx in sorted(class_correct.keys()):
         acc = 100 * class_correct[class_idx] / class_total[class_idx]
         print("Class {}: {:.2f}%".format(class_idx, acc))
+
+    # Calculate precision, recall, and F1-score for class 7
+    class_label = 7
+    precision = precision_score(test_true, test_pred, labels=[class_label], average='macro', zero_division=0)
+    recall = recall_score(test_true, test_pred, labels=[class_label], average='macro', zero_division=0)
+    f1 = f1_score(test_true, test_pred, labels=[class_label], average='macro', zero_division=0)
+
+    print("\nMetrics for Class 7:")
+    print("Precision: {:.4f}".format(precision))
+    print("Recall: {:.4f}".format(recall))
+    print("F1-score: {:.4f}".format(f1))
+
 
 def test(args, io):
     test_loader = DataLoader(ModelNetDataset(partition='test', num_points=args.num_points),
