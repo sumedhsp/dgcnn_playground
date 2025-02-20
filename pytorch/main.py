@@ -137,54 +137,76 @@ def train(args, io):
     
     # Printing each class accuracy after training.
     from collections import defaultdict
-
+    
+    # Initialize per-class accuracy tracking
     class_correct = defaultdict(int)
     class_total = defaultdict(int)
 
+    # Set model to evaluation mode
     model.eval()
-        
+    
     total_correct = 0
     total_testset = 0
     test_pred = []
     test_true = []
-    for data, label in test_loader:
-        data, label = data.to(device), label.to(device).squeeze()
-        #points, target = data, label
-        
-        if label.dim() > 1:  # If label is 2D, extract column 0
-            label = label[:, 0]
-        
-        data = data.transpose(2, 1)
-        data, label = data.cuda(), label.cuda()
-        logits = model(data)
-        loss = criterion(logits, label)
-        preds = logits.max(dim=1)[1]
-        count += batch_size
-        test_loss += loss.item() * batch_size
-        test_true.append(label.cpu().numpy())
-        test_pred.append(preds.detach().cpu().numpy())
-    
-        test_true = np.concatenate(test_true)
-        test_pred = np.concatenate(test_pred)
-            
-        correct = test_true.eq(label).cpu().sum()
-        total_correct += correct.item()
-        total_testset += data.size()[0]
 
-        for t, p in zip(label.cpu().numpy(), preds.detach().cpu().numpy()):
-            if t == p:
-                class_correct[t] += 1
-            class_total[t] += 1
+    # Initialize loss tracking
+    count = 0
+    test_loss = 0.0
 
-    print("Overall Accuracy {}".format(total_correct / float(total_testset)))
+    # Disable gradient calculations for efficiency
+    with torch.no_grad():
+        for data, label in test_loader:
+            data, label = data.to(device), label.to(device)
 
+            # Ensure label shape is correct before indexing
+            if label.dim() > 1:  # If label is 2D, extract column 0
+                label = label[:, 0]
 
-    # Displaying per-class accuracy
-    for cls in class_total.keys():
-        class_accuracy = class_correct[cls] / class_total[cls]
-        print(f"Class {cls} Accuracy: {class_accuracy: .2f}")
+            # Transpose input data (ensure it's required)
+            data = data.transpose(2, 1)
 
+            # Move data to CUDA
+            data, label = data.cuda(), label.cuda()
 
+            # Forward pass
+            logits = model(data)
+            loss = criterion(logits, label)
+            preds = logits.max(dim=1)[1]
+
+            # Update loss tracking
+            batch_size = data.size(0)
+            count += batch_size
+            test_loss += loss.item() * batch_size
+
+            # Store predictions and true labels for later analysis
+            test_true.append(label.cpu().numpy())
+            test_pred.append(preds.detach().cpu().numpy())
+
+            # Compute correct predictions for overall accuracy
+            correct = preds.eq(label).cpu().sum()
+            total_correct += correct.item()
+            total_testset += batch_size
+
+            # Compute per-class accuracy
+            for t, p in zip(label.cpu().numpy(), preds.cpu().numpy()):
+                if t == p:
+                    class_correct[t] += 1
+                class_total[t] += 1
+
+    # Concatenate all predictions and labels after the loop
+    test_true = np.concatenate(test_true)
+    test_pred = np.concatenate(test_pred)
+
+    # Print overall accuracy
+    overall_accuracy = 100 * total_correct / float(total_testset)
+    print("Overall Accuracy: {:.2f}%".format(overall_accuracy))
+
+    # Print per-class accuracy
+    print("\nPer-class Accuracy:")
+    for class_idx in sorted(class_correct.keys()):
+        acc = 100 * class_correct[class_idx] / class_total[class_idx]
+        print("Class {}: {:.2f}%".format(class_idx, acc))
 
 def test(args, io):
     test_loader = DataLoader(ModelNetDataset(partition='test', num_points=args.num_points),
