@@ -154,13 +154,22 @@ def train(args, io):
         
         data = data.transpose(2, 1)
         data, label = data.cuda(), label.cuda()
-        pred, _, _ = model(data)
-        pred_choice = pred.data.max(1)[1]
-        correct = pred_choice.eq(label).cpu().sum()
+        logits = model(data)
+        loss = criterion(logits, label)
+        preds = logits.max(dim=1)[1]
+        count += batch_size
+        test_loss += loss.item() * batch_size
+        test_true.append(label.cpu().numpy())
+        test_pred.append(preds.detach().cpu().numpy())
+    
+        test_true = np.concatenate(test_true)
+        test_pred = np.concatenate(test_pred)
+            
+        correct = test_true.eq(label).cpu().sum()
         total_correct += correct.item()
         total_testset += data.size()[0]
 
-        for t, p in zip(label.cpu().numpy(), pred_choice.cpu().numpy()):
+        for t, p in zip(label.cpu().numpy(), preds.detach().cpu().numpy()):
             if t == p:
                 class_correct[t] += 1
             class_total[t] += 1
