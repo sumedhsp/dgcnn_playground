@@ -145,6 +145,8 @@ def train(args, io):
         
     total_correct = 0
     total_testset = 0
+    test_pred = []
+    test_true = []
     for data, label in test_loader:
         data, label = data.to(device), label.to(device).squeeze()
         #points, target = data, label
