@@ -221,6 +221,104 @@ def train(args, io):
     print("F1-score: {:.4f}".format(f1))
 
 
+def test_model(args, io):
+    test_loader = DataLoader(ModelNetDataset(root=args.dataset_path, split='test', npoints=args.num_points, data_augmentation=False), num_workers=4,
+                             batch_size=args.test_batch_size, shuffle=True, drop_last=False)
+
+    device = torch.device("cuda" if args.cuda else "cpu")
+
+    #Try to load models
+    if args.model == 'pointnet':
+        model = PointNet(args).to(device)
+    elif args.model == 'dgcnn':
+        model = DGCNN(args).to(device)
+    else:
+        raise Exception("Not implemented")
+    print(str(model))
+
+    model = nn.DataParallel(model)
+
+    model.load_state_dict(torch.load(args.model_path))
+    model = model.eval()
+    
+    # Printing each class accuracy after training.
+    from collections import defaultdict
+    from sklearn.metrics import precision_score, recall_score, f1_score
+    
+    # Initialize per-class accuracy tracking
+    class_correct = defaultdict(int)
+    class_total = defaultdict(int)
+
+    total_correct = 0
+    total_testset = 0
+    test_pred = []
+    test_true = []
+
+    # Initialize loss tracking
+    count = 0
+
+    # Disable gradient calculations for efficiency
+    with torch.no_grad():
+        for data, label in test_loader:
+            data, label = data.to(device), label.to(device)
+
+            # Ensure label shape is correct before indexing
+            if label.dim() > 1:  # If label is 2D, extract column 0
+                label = label[:, 0]
+
+            # Transpose input data (ensure it's required)
+            data = data.transpose(2, 1)
+
+            # Move data to CUDA
+            data, label = data.cuda(), label.cuda()
+
+            # Forward pass
+            logits = model(data)
+            preds = logits.max(dim=1)[1]
+
+            # Update loss tracking
+            batch_size = data.size(0)
+
+            # Store predictions and true labels for later analysis
+            test_true.append(label.cpu().numpy())
+            test_pred.append(preds.detach().cpu().numpy())
+
+            # Compute correct predictions for overall accuracy
+            correct = preds.eq(label).cpu().sum()
+            total_correct += correct.item()
+            total_testset += batch_size
+
+            # Compute per-class accuracy
+            for t, p in zip(label.cpu().numpy(), preds.cpu().numpy()):
+                if t == p:
+                    class_correct[t] += 1
+                class_total[t] += 1
+
+    # Concatenate all predictions and labels after the loop
+    test_true = np.concatenate(test_true)
+    test_pred = np.concatenate(test_pred)
+
+    # Print overall accuracy
+    overall_accuracy = 100 * total_correct / float(total_testset)
+    print("Overall Accuracy: {:.2f}%".format(overall_accuracy))
+
+    # Print per-class accuracy
+    print("\nPer-class Accuracy:")
+    for class_idx in sorted(class_correct.keys()):
+        acc = 100 * class_correct[class_idx] / class_total[class_idx]
+        print("Class {}: {:.2f}%".format(class_idx, acc))
+
+    # Calculate precision, recall, and F1-score for class 7
+    class_label = 7
+    precision = precision_score(test_true, test_pred, labels=[class_label], average='macro', zero_division=0)
+    recall = recall_score(test_true, test_pred, labels=[class_label], average='macro', zero_division=0)
+    f1 = f1_score(test_true, test_pred, labels=[class_label], average='macro', zero_division=0)
+
+    print("\nMetrics for Class 7:")
+    print("Precision: {:.4f}".format(precision))
+    print("Recall: {:.4f}".format(recall))
+    print("F1-score: {:.4f}".format(f1))
+
 def test(args, io):
     test_loader = DataLoader(ModelNetDataset(partition='test', num_points=args.num_points),
                              batch_size=args.test_batch_size, shuffle=True, drop_last=False)
@@ -311,4 +409,4 @@ if __name__ == "__main__":
     if not args.eval:
         train(args, io)
     else:
-        test(args, io)
+        test_model(args, io)
